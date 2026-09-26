@@ -1,4 +1,4 @@
-# Vsay Agent
+# Wxt Agent
 
 Lightweight Go agent that runs on Linux machines to enable secure remote terminal access via **gRPC**.
 
