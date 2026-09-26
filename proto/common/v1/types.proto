@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package vsay.common.v1;
+
+option go_package = "github.com/vsay/vsay-agent/proto/common/v1;commonv1";
+
+// Timestamp message
+message Timestamp {
+  int64 seconds = 1;
+  int32 nanos = 2;
+}
+
+// Generic error response
+message Error {
+  string code = 1;
+  string message = 2;
+  map<string, string> details = 3;
+}
+
+// Resource statistics
+message ResourceStats {
+  float cpu_percent = 1;
+  float memory_percent = 2;
+  float disk_percent = 3;
+  int64 uptime_seconds = 4;
+  float network_inbound = 5;  // MB/s
+  float network_outbound = 6; // MB/s
+}

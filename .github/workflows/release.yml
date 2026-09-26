@@ -1,0 +1,299 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  GO_VERSION: '1.21'
+
+jobs:
+  # Build Linux packages
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Install nfpm
+        run: |
+          echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | sudo tee /etc/apt/sources.list.d/goreleaser.list
+          sudo apt update
+          sudo apt install nfpm
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "VERSION=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate protobuf
+        run: make proto
+
+      - name: Build Linux binaries
+        run: make build-linux
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+
+      - name: Build DEB packages
+        run: |
+          ARCH=amd64 VERSION=${{ steps.version.outputs.VERSION }} ./scripts/build-deb.sh
+          ARCH=arm64 VERSION=${{ steps.version.outputs.VERSION }} ./scripts/build-deb.sh
+
+      - name: Build RPM packages
+        run: |
+          ARCH=amd64 VERSION=${{ steps.version.outputs.VERSION }} ./scripts/build-rpm.sh
+          ARCH=arm64 VERSION=${{ steps.version.outputs.VERSION }} ./scripts/build-rpm.sh
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            dist/deb/*.deb
+            dist/rpm/*.rpm
+
+  # Build Windows packages
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install protoc
+        shell: powershell
+        run: choco install protoc -y
+
+      - name: Install Go protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "VERSION=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate protobuf
+        shell: bash
+        run: |
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          ./scripts/generate-proto.sh || true
+
+      - name: Build Windows binaries
+        shell: bash
+        run: |
+          mkdir -p dist/bin/windows-amd64 dist/bin/windows-arm64
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
+            -ldflags "-s -w -X main.version=${{ steps.version.outputs.VERSION }}" \
+            -o dist/bin/windows-amd64/vsay-agent.exe ./cmd/agent
+          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build \
+            -ldflags "-s -w -X main.version=${{ steps.version.outputs.VERSION }}" \
+            -o dist/bin/windows-arm64/vsay-agent.exe ./cmd/agent
+
+      - name: Install NSIS
+        shell: powershell
+        run: choco install nsis -y
+
+      - name: Build Windows installer (amd64)
+        shell: cmd
+        run: |
+          "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=${{ steps.version.outputs.VERSION }} /DARCH=amd64 scripts\nsis\installer.nsi
+        continue-on-error: true
+
+      - name: Build Windows installer (arm64)
+        shell: cmd
+        run: |
+          "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=${{ steps.version.outputs.VERSION }} /DARCH=arm64 scripts\nsis\installer.nsi
+        continue-on-error: true
+
+      - name: Prepare Windows packages
+        shell: bash
+        run: |
+          mkdir -p dist/windows
+          # Move NSIS installers if they exist
+          find scripts/nsis -name "*.exe" -exec mv {} dist/windows/ \; 2>/dev/null || true
+          # Copy standalone executables
+          cp dist/bin/windows-amd64/vsay-agent.exe "dist/windows/vsay-agent_${{ steps.version.outputs.VERSION }}_windows_amd64.exe"
+          cp dist/bin/windows-arm64/vsay-agent.exe "dist/windows/vsay-agent_${{ steps.version.outputs.VERSION }}_windows_arm64.exe"
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-packages
+          path: dist/windows/*.exe
+
+  # Build macOS packages
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install protoc
+        run: brew install protobuf
+
+      - name: Install Go protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "VERSION=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate protobuf
+        run: |
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          make proto
+
+      - name: Build macOS binaries
+        run: make build-macos
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+
+      - name: Build DMG packages
+        run: VERSION=${{ steps.version.outputs.VERSION }} ./scripts/build-dmg.sh
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-packages
+          path: dist/dmg/*.dmg
+
+  # Create release
+  release:
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "VERSION=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.exe" -o -name "*.dmg" \) -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: VSay Agent v${{ steps.version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          files: |
+            release/*
+          body: |
+            ## VSay Agent v${{ steps.version.outputs.VERSION }}
+
+            ### Installation
+
+            **Debian/Ubuntu:**
+            ```bash
+            sudo dpkg -i vsay-agent_${{ steps.version.outputs.VERSION }}_amd64.deb
+            ```
+
+            **RHEL/Fedora/CentOS:**
+            ```bash
+            sudo rpm -i vsay-agent-${{ steps.version.outputs.VERSION }}.x86_64.rpm
+            ```
+
+            **Windows:**
+            Download and run the `.exe` installer, or use the standalone executable.
+
+            **macOS:**
+            Download the `.dmg`, open it, and run `Install.command`.
+
+            ### Configuration
+
+            After installation, configure the agent:
+            ```bash
+            sudo vsay-agent configure \
+              --token <token> \
+              --tenant <tenant> \
+              --org <org> \
+              --project <project> \
+              --user <email> \
+              --linux-user <username> \
+              --host <server-url> \
+              --allow-sudo
+            ```
+
+            Then start the service:
+            ```bash
+            sudo systemctl start vsay-agent
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

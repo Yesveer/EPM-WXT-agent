@@ -1,0 +1,16 @@
+[Unit]
+Description=Vsay Agent - Remote Terminal Access
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/vsay-agent start --config /etc/vsay/agent.yaml
+Restart=on-failure
+RestartSec=10s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

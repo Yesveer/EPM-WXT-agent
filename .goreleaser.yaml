@@ -1,0 +1,137 @@
+version: 2
+
+project_name: vsay-agent
+
+before:
+  hooks:
+    - go mod tidy
+    - ./scripts/generate-proto.sh
+
+builds:
+  - id: vsay-agent
+    main: ./cmd/agent
+    binary: vsay-agent
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+      - -extldflags '-static'
+
+# Only binary output - no tar.gz archives
+archives:
+  - id: binaries-only
+    format: binary
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+# Linux packages - .deb, .rpm with proper permissions
+nfpms:
+  - id: linux-packages
+    package_name: vsay-agent
+    vendor: VSay
+    homepage: https://vsay.in
+    maintainer: VSay Team <support@vsay.in>
+    description: |
+      VSay Agent - Remote Terminal Access for Linux Machines.
+      Lightweight agent that enables secure remote terminal access
+      to Linux machines with RBAC and audit logging.
+    license: Proprietary
+    formats:
+      - deb
+      - rpm
+
+    # Binary installation directory
+    bindir: /usr/local/bin
+
+    # Package metadata
+    section: admin
+    priority: optional
+
+    # Dependencies
+    dependencies:
+      - systemd
+
+    # File permissions
+    file_name_template: "{{ .PackageName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+    # Package contents with proper permissions
+    contents:
+      # Systemd service file
+      - src: ./systemd/vsay-agent.service
+        dst: /etc/systemd/system/vsay-agent.service
+        file_info:
+          mode: 0644
+
+      # Config directory
+      - dst: /etc/vsay
+        type: dir
+        file_info:
+          mode: 0755
+
+      # Log directory
+      - dst: /var/log/vsay
+        type: dir
+        file_info:
+          mode: 0755
+
+    # Override for specific formats
+    overrides:
+      deb:
+        file_name_template: "{{ .PackageName }}_{{ .Version }}_{{ .Arch }}"
+        dependencies:
+          - systemd
+        scripts:
+          postinstall: scripts/pkg/postinstall.sh
+          preremove: scripts/pkg/preremove.sh
+          postremove: scripts/pkg/postremove.sh
+
+      rpm:
+        file_name_template: "{{ .PackageName }}-{{ .Version }}.{{ .Arch }}"
+        dependencies:
+          - systemd
+        scripts:
+          postinstall: scripts/pkg/postinstall.sh
+          preremove: scripts/pkg/preremove.sh
+          postremove: scripts/pkg/postremove.sh
+
+    # Ensure binary is executable
+    umask: 0o002
+
+release:
+  github:
+    owner: vsay
+    name: vsay-agent
+  draft: false
+  prerelease: auto
+  name_template: "{{.ProjectName}} v{{.Version}}"
+  extra_files:
+    - glob: ./dist/*.deb
+    - glob: ./dist/*.rpm
+    - glob: ./dist/*.exe
+    - glob: ./dist/*.dmg

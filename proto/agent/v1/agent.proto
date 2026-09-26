@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package vsay.agent.v1;
+
+import "common/v1/types.proto";
+
+option go_package = "github.com/vsay/vsay-agent/proto/agent/v1;agentv1";
+
+// Agent Service - gRPC service for agent communication
+service AgentService {
+  // Register agent with backend
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  
+  // Send heartbeat
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  
+  // Bidirectional streaming for commands and output
+  rpc Stream(stream AgentMessage) returns (stream ServerMessage);
+}
+
+// Agent registration
+message RegisterRequest {
+  string token = 1;
+  string hostname = 2;
+  string os_info = 3;
+  string ip_address = 4;
+  LinuxUserInfo linux_user = 5;
+  map<string, string> metadata = 6;
+}
+
+message LinuxUserInfo {
+  string username = 1;
+  int32 uid = 2;
+  int32 gid = 3;
+  repeated string groups = 4;
+  bool has_sudo = 5;
+  string home_dir = 6;
+  string shell = 7;
+}
+
+message RegisterResponse {
+  string agent_id = 1;
+  bool approved = 2;
+  string message = 3;
+  CommandRestrictions restrictions = 4;
+}
+
+message CommandRestrictions {
+  repeated string allowed_commands = 1;
+  repeated string blocked_commands = 2;
+  repeated string sudo_allowed_commands = 3;
+  repeated string approval_required_commands = 4;
+}
+
+// Heartbeat
+message HeartbeatRequest {
+  string agent_id = 1;
+  common.v1.ResourceStats stats = 2;
+}
+
+message HeartbeatResponse {
+  bool acknowledged = 1;
+  string message = 2;
+}
+
+// Bidirectional streaming messages
+message AgentMessage {
+  string agent_id = 1;
+  oneof payload {
+    Heartbeat heartbeat = 2;
+    CommandOutput command_output = 3;
+    StatusUpdate status = 4;
+    TerminalOutput terminal_output = 5;
+  }
+}
+
+message Heartbeat {
+  common.v1.Timestamp timestamp = 1;
+  common.v1.ResourceStats stats = 2;
+}
+
+message CommandOutput {
+  string command_id = 1;
+  bytes stdout = 2;
+  bytes stderr = 3;
+  int32 exit_code = 4;
+  bool completed = 5;
+}
+
+message StatusUpdate {
+  string status = 1;
+  string message = 2;
+}
+
+message TerminalOutput {
+  string session_id = 1;
+  bytes data = 2;
+}
+
+message ServerMessage {
+  oneof payload {
+    CommandRequest command = 1;
+    TerminalInput terminal_input = 2;
+    ConfigUpdate config = 3;
+    ApprovalNotification approval = 4;
+  }
+}
+
+message CommandRequest {
+  string command_id = 1;
+  string command = 2;
+  map<string, string> env = 3;
+  bool requires_approval = 4;
+}
+
+message TerminalInput {
+  string session_id = 1;
+  bytes data = 2;
+}
+
+message ConfigUpdate {
+  CommandRestrictions restrictions = 1;
+  bool force_reconnect = 2;
+}
+
+message ApprovalNotification {
+  string command_id = 1;
+  bool approved = 2;
+  string approver = 3;
+  string reason = 4;
+}
