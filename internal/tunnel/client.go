@@ -1,4 +1,4 @@
-// Package tunnel implements the vsay-agent side of the vsay-tunnel protocol.
+// Package tunnel implements the wxt-agent side of the vsay-tunnel protocol.
 //
 // How it works (ngrok-style reverse tunnel):
 //
@@ -84,9 +84,9 @@ type Client struct {
 
 // New creates a tunnel Client.
 //
-//   baseURL      — vsay-tunnel management API base (e.g. "http://vsay-tunnel:8083")
-//   machineID    — this agent's machine/agent ID (used to query tunnels)
-//   pollInterval — how often to poll for new tunnels (e.g. 10s)
+//	baseURL      — vsay-tunnel management API base (e.g. "http://vsay-tunnel:8083")
+//	machineID    — this agent's machine/agent ID (used to query tunnels)
+//	pollInterval — how often to poll for new tunnels (e.g. 10s)
 func New(baseURL, machineID string, pollInterval time.Duration, logger *zap.Logger) *Client {
 	return &Client{
 		baseURL:      strings.TrimRight(baseURL, "/"),

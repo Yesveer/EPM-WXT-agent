@@ -20,18 +20,18 @@ type Handler struct {
 
 // Session represents a PTY session
 type Session struct {
-	ID          string
-	PTY         *os.File
-	Cmd         *exec.Cmd
-	Username    string
-	UID         int
-	GID         int
-	HomeDir     string
-	Shell       string
-	OutputChan  chan []byte
-	mu          sync.Mutex
-	logger      *zap.Logger
-	running     bool
+	ID         string
+	PTY        *os.File
+	Cmd        *exec.Cmd
+	Username   string
+	UID        int
+	GID        int
+	HomeDir    string
+	Shell      string
+	OutputChan chan []byte
+	mu         sync.Mutex
+	logger     *zap.Logger
+	running    bool
 }
 
 // NewHandler creates a new PTY handler

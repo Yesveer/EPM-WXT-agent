@@ -32,7 +32,7 @@ Lightweight Go agent that runs on Linux machines to enable secure remote termina
 After installation, configure the agent. **The daemon will automatically start after configuration:**
 
 ```bash
-sudo vsay-agent configure \
+sudo wxt-agent configure \
   --token "YOUR_AGENT_TOKEN" \
   --tenant "tenant-id" \
   --org "organization-id" \

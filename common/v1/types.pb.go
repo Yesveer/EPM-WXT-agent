@@ -242,7 +242,7 @@ const file_common_v1_types_proto_rawDesc = "" +
 	"\fdisk_percent\x18\x03 \x01(\x02R\vdiskPercent\x12%\n" +
 	"\x0euptime_seconds\x18\x04 \x01(\x03R\ruptimeSeconds\x12'\n" +
 	"\x0fnetwork_inbound\x18\x05 \x01(\x02R\x0enetworkInbound\x12)\n" +
-	"\x10network_outbound\x18\x06 \x01(\x02R\x0fnetworkOutboundB5Z3github.com/vsay/vsay-agent/proto/common/v1;commonv1b\x06proto3"
+	"\x10network_outbound\x18\x06 \x01(\x02R\x0fnetworkOutboundB7Z5github.com/Yesveer/wxt-agent/proto/common/v1;commonv1b\x06proto3"
 
 var (
 	file_common_v1_types_proto_rawDescOnce sync.Once

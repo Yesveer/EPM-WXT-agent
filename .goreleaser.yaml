@@ -1,6 +1,6 @@
 version: 2
 
-project_name: vsay-agent
+project_name: wxt-agent
 
 before:
   hooks:
@@ -8,9 +8,9 @@ before:
     - ./scripts/generate-proto.sh
 
 builds:
-  - id: vsay-agent
+  - id: wxt-agent
     main: ./cmd/agent
-    binary: vsay-agent
+    binary: wxt-agent
     env:
       - CGO_ENABLED=0
     goos:
@@ -53,7 +53,7 @@ changelog:
 # Linux packages - .deb, .rpm with proper permissions
 nfpms:
   - id: linux-packages
-    package_name: vsay-agent
+    package_name: wxt-agent
     vendor: VSay
     homepage: https://vsay.in
     maintainer: VSay Team <support@vsay.in>
@@ -83,8 +83,8 @@ nfpms:
     # Package contents with proper permissions
     contents:
       # Systemd service file
-      - src: ./systemd/vsay-agent.service
-        dst: /etc/systemd/system/vsay-agent.service
+      - src: ./systemd/wxt-agent.service
+        dst: /etc/systemd/system/wxt-agent.service
         file_info:
           mode: 0644
 
@@ -126,7 +126,7 @@ nfpms:
 release:
   github:
     owner: vsay
-    name: vsay-agent
+    name: wxt-agent
   draft: false
   prerelease: auto
   name_template: "{{.ProjectName}} v{{.Version}}"

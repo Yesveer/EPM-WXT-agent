@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Build script for vsay-agent
+# Build script for wxt-agent
 # Builds the agent for multiple platforms
 
 set -e
@@ -12,7 +12,7 @@ NC='\033[0m'
 
 # Build directory
 BUILD_DIR="dist"
-BINARY_NAME="vsay-agent"
+BINARY_NAME="wxt-agent"
 
 # Platforms to build for
 PLATFORMS=(
@@ -30,7 +30,7 @@ BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS="-X main.version=$VERSION -X main.commit=$COMMIT -X main.date=$BUILD_TIME"
 LDFLAGS="$LDFLAGS -extldflags '-static'"
 
-echo -e "${GREEN}Building vsay-agent${NC}"
+echo -e "${GREEN}Building wxt-agent${NC}"
 echo "Version: $VERSION"
 echo "Commit: $COMMIT"
 echo "Build Time: $BUILD_TIME"

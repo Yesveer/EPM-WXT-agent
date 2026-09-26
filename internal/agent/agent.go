@@ -27,17 +27,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vsay/vsay-agent/internal/config"
-	"github.com/vsay/vsay-agent/internal/executor"
-	"github.com/vsay/vsay-agent/internal/filesystem"
-	"github.com/vsay/vsay-agent/internal/grpc"
-	"github.com/vsay/vsay-agent/internal/monitor"
-	"github.com/vsay/vsay-agent/internal/portforward"
-	"github.com/vsay/vsay-agent/internal/pty"
-	"github.com/vsay/vsay-agent/internal/tunnel"
-	"github.com/vsay/vsay-agent/internal/vscode"
-	agentv1 "github.com/vsay/vsay-agent/proto/agent/v1"
-	commonv1 "github.com/vsay/vsay-agent/proto/common/v1"
+	"github.com/Yesveer/wxt-agent/internal/config"
+	"github.com/Yesveer/wxt-agent/internal/executor"
+	"github.com/Yesveer/wxt-agent/internal/filesystem"
+	"github.com/Yesveer/wxt-agent/internal/grpc"
+	"github.com/Yesveer/wxt-agent/internal/monitor"
+	"github.com/Yesveer/wxt-agent/internal/portforward"
+	"github.com/Yesveer/wxt-agent/internal/pty"
+	"github.com/Yesveer/wxt-agent/internal/remotecontrol"
+	"github.com/Yesveer/wxt-agent/internal/tunnel"
+	"github.com/Yesveer/wxt-agent/internal/vscode"
+	agentv1 "github.com/Yesveer/wxt-agent/proto/agent/v1"
+	commonv1 "github.com/Yesveer/wxt-agent/proto/common/v1"
 	"go.uber.org/zap"
 )
 
@@ -61,6 +62,7 @@ type Agent struct {
 	vscodeProcessesMux sync.Mutex
 	fsOps              *filesystem.Operations
 	portForward        *portforward.Manager
+	remoteControl      *remotecontrol.Controller
 	// certMu serialises all cert and CA file operations.
 	// Prevents concurrent CA rotation paths (gRPC in-band + polling recovery)
 	// from racing on the same on-disk files.
@@ -107,6 +109,16 @@ func New(cfg *config.Config, logger *zap.Logger) (*Agent, error) {
 		return fmt.Errorf("grpc client not connected")
 	})
 
+	// Remote control (AnyDesk-style live session takeover). The controller only
+	// bridges to the session helper — nothing is launched until the backend
+	// actually asks for a session.
+	agent.remoteControl = remotecontrol.New("", logger, func(sessionID string, data []byte) error {
+		if agent.grpcClient != nil {
+			return agent.grpcClient.SendTerminalOutput(sessionID, data)
+		}
+		return fmt.Errorf("grpc client not connected")
+	})
+
 	return agent, nil
 }
 
@@ -123,6 +135,15 @@ func (a *Agent) Start(ctx context.Context) error {
 	// On Windows, ensure the remote-desktop backend is up (RDP on Pro, VNC on Home) so
 	// the portal's Desktop feature can tunnel to it. No-op on Linux. Best-effort.
 	a.ensureRemoteDesktop()
+
+	// The session helper must never outlive the agent: an orphaned helper would
+	// leave the user's screen capturable with nobody supervising it.
+	go func() {
+		<-ctx.Done()
+		if err := a.remoteControl.Close(); err != nil {
+			a.logger.Warn("Failed to stop the session helper", zap.Error(err))
+		}
+	}()
 
 	// caFingerprintLoop runs for the full agent lifetime. It uses recoveryHTTPClient
 	// (InsecureSkipVerify) so it works even when the pinned CA is stale, and checks
@@ -1295,7 +1316,7 @@ func (a *Agent) handleSelfUpdate(downloadURL string) {
 	binDir := filepath.Dir(currentBin)
 
 	// 2. Download the package to a temp file.
-	tmpPkg, err := os.CreateTemp("", "vsay-agent-update-*")
+	tmpPkg, err := os.CreateTemp("", "wxt-agent-update-*")
 	if err != nil {
 		a.sendUpdateStatus("update_error", "create temp file: "+err.Error())
 		return
@@ -1400,7 +1421,7 @@ func (a *Agent) downloadUpdate(url string, dst *os.File) error {
 	return nil
 }
 
-// extractAgentBinary pulls the vsay-agent executable out of the downloaded package.
+// extractAgentBinary pulls the wxt-agent executable out of the downloaded package.
 // Returns the path to the extracted binary (a temp file the caller must remove).
 func (a *Agent) extractAgentBinary(downloadURL, pkgPath, workDir string) (string, error) {
 	lower := strings.ToLower(downloadURL)
@@ -1413,7 +1434,7 @@ func (a *Agent) extractAgentBinary(downloadURL, pkgPath, workDir string) (string
 		return extractBinaryFromDmg(pkgPath, workDir)
 	case strings.HasSuffix(lower, ".exe"):
 		// A standalone .exe IS the binary — just copy it out.
-		dst := filepath.Join(workDir, "vsay-agent-new.exe")
+		dst := filepath.Join(workDir, "wxt-agent-new.exe")
 		if err := copyFile(pkgPath, dst, 0o755); err != nil {
 			return "", err
 		}
@@ -1423,7 +1444,7 @@ func (a *Agent) extractAgentBinary(downloadURL, pkgPath, workDir string) (string
 	}
 }
 
-// extractBinaryFromTarGz finds the vsay-agent binary inside a .tar.gz and writes it
+// extractBinaryFromTarGz finds the wxt-agent binary inside a .tar.gz and writes it
 // to a temp file in workDir.
 func extractBinaryFromTarGz(pkgPath, workDir string) (string, error) {
 	// pkgPath is our own just-downloaded temp file, not request input.
@@ -1452,11 +1473,11 @@ func extractBinaryFromTarGz(pkgPath, workDir string) (string, error) {
 			continue
 		}
 		base := filepath.Base(hdr.Name)
-		if base == "vsay-agent" || base == "vsay-agent.exe" {
+		if base == "wxt-agent" || base == "wxt-agent.exe" {
 			return writeTempBinary(workDir, tr)
 		}
 	}
-	return "", fmt.Errorf("vsay-agent binary not found in tar.gz")
+	return "", fmt.Errorf("wxt-agent binary not found in tar.gz")
 }
 
 // extractBinaryFromDeb extracts the binary from a .deb using `dpkg-deb -x` (which
@@ -1473,29 +1494,29 @@ func extractBinaryFromDeb(pkgPath, workDir string) (string, error) {
 		return "", fmt.Errorf("dpkg-deb -x: %v (%s)", err, string(out))
 	}
 
-	// The .deb installs the binary at usr/local/bin/vsay-agent.
+	// The .deb installs the binary at usr/local/bin/wxt-agent.
 	var found string
 	_ = filepath.Walk(outDir, func(path string, info os.FileInfo, werr error) error {
 		if werr != nil || info.IsDir() {
 			return nil
 		}
-		if filepath.Base(path) == "vsay-agent" {
+		if filepath.Base(path) == "wxt-agent" {
 			found = path
 		}
 		return nil
 	})
 	if found == "" {
-		return "", fmt.Errorf("vsay-agent binary not found in .deb")
+		return "", fmt.Errorf("wxt-agent binary not found in .deb")
 	}
 
-	dst := filepath.Join(workDir, "vsay-agent-new")
+	dst := filepath.Join(workDir, "wxt-agent-new")
 	if err := copyFile(found, dst, 0o755); err != nil {
 		return "", err
 	}
 	return dst, nil
 }
 
-// extractBinaryFromDmg mounts a .dmg, copies the vsay-agent binary out, and detaches.
+// extractBinaryFromDmg mounts a .dmg, copies the wxt-agent binary out, and detaches.
 func extractBinaryFromDmg(pkgPath, workDir string) (string, error) {
 	mnt, err := os.MkdirTemp(workDir, "dmg-mount-*")
 	if err != nil {
@@ -1514,16 +1535,16 @@ func extractBinaryFromDmg(pkgPath, workDir string) (string, error) {
 		if werr != nil || info.IsDir() {
 			return nil
 		}
-		if filepath.Base(path) == "vsay-agent" {
+		if filepath.Base(path) == "wxt-agent" {
 			found = path
 		}
 		return nil
 	})
 	if found == "" {
-		return "", fmt.Errorf("vsay-agent binary not found in .dmg")
+		return "", fmt.Errorf("wxt-agent binary not found in .dmg")
 	}
 
-	dst := filepath.Join(workDir, "vsay-agent-new")
+	dst := filepath.Join(workDir, "wxt-agent-new")
 	if err := copyFile(found, dst, 0o755); err != nil {
 		return "", err
 	}
@@ -1532,7 +1553,7 @@ func extractBinaryFromDmg(pkgPath, workDir string) (string, error) {
 
 // writeTempBinary streams r into a uniquely-named temp file in workDir.
 func writeTempBinary(workDir string, r io.Reader) (string, error) {
-	out, err := os.CreateTemp(workDir, "vsay-agent-new-*")
+	out, err := os.CreateTemp(workDir, "wxt-agent-new-*")
 	if err != nil {
 		return "", err
 	}
@@ -1569,16 +1590,44 @@ func copyFile(src, dst string, mode os.FileMode) error {
 // so the restart survives this process being killed. systemd/launchctl then brings
 // the freshly-swapped binary back up, which re-registers with the new version.
 func (a *Agent) restartService() {
+	// The identifiers come from serviceids.go rather than being written out
+	// here: when they were duplicated they drifted from what configure
+	// actually registers, and a restart that targets the wrong name fails
+	// silently — leaving the machine running the old binary after a
+	// "successful" update.
+	var cmd *osExec.Cmd
 	switch runtime.GOOS {
 	case "linux":
-		_ = osExec.Command("sudo", "systemctl", "restart", "vsay-agent").Start()
+		cmd = osExec.Command("sudo", "systemctl", "restart", SystemdUnit)
 	case "darwin":
-		// launchd label used by the macOS package; kickstart -k forces a restart.
-		_ = osExec.Command("sudo", "launchctl", "kickstart", "-k", "system/com.vsay.agent").Start()
+		// kickstart -k forces launchd to stop and restart the job.
+		cmd = osExec.Command("launchctl", "kickstart", "-k", "system/"+LaunchDaemonLabel)
 	case "windows":
-		_ = osExec.Command("cmd", "/C", "net stop vsay-agent && net start vsay-agent").Start()
+		// A scheduled task, not a service — so schtasks, not `net`.
+		cmd = osExec.Command("schtasks", "/end", "/tn", WindowsTaskName)
 	default:
 		a.logger.Warn("Self-update: no restart strategy for OS", zap.String("os", runtime.GOOS))
+		return
+	}
+
+	a.logger.Info("Self-update: restarting the agent service",
+		zap.String("os", runtime.GOOS), zap.String("cmd", cmd.String()))
+
+	if out, err := cmd.CombinedOutput(); err != nil {
+		// Worth surfacing: a failed restart is the difference between an
+		// update that took effect and one that only appeared to.
+		a.logger.Error("Self-update: restart command failed — the agent may still be running the old binary",
+			zap.Error(err), zap.ByteString("out", out))
+		return
+	}
+
+	if runtime.GOOS == "windows" {
+		// schtasks /end only stops it; the task's own trigger does not re-run
+		// on demand, so it has to be started explicitly.
+		if out, err := osExec.Command("schtasks", "/run", "/tn", WindowsTaskName).CombinedOutput(); err != nil {
+			a.logger.Error("Self-update: could not restart the scheduled task",
+				zap.Error(err), zap.ByteString("out", out))
+		}
 	}
 }
 
@@ -1614,6 +1663,12 @@ func (a *Agent) handleTerminalInput(input *agentv1.TerminalInput) error {
 				a.logger.Debug("Received filesystem operation request",
 					zap.String("session_id", input.SessionId))
 				go a.handleFilesystemOperation(input.SessionId, msg)
+				return nil
+			} else if remotecontrol.Handles(msgType) {
+				a.logger.Info("Received remote-control message",
+					zap.String("session_id", input.SessionId),
+					zap.String("type", msgType))
+				a.remoteControl.HandleMessage(input.SessionId, msg)
 				return nil
 			} else if msgType == "port_connect" || msgType == "port_data" || msgType == "port_close" {
 				a.logger.Debug("Received port forwarding message",

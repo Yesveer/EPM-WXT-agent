@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package vsay.common.v1;
 
-option go_package = "github.com/vsay/vsay-agent/proto/common/v1;commonv1";
+option go_package = "github.com/Yesveer/wxt-agent/proto/common/v1;commonv1";
 
 // Timestamp message
 message Timestamp {

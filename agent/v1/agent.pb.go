@@ -7,7 +7,7 @@
 package agentv1
 
 import (
-	v1 "github.com/vsay/vsay-agent/proto/common/v1"
+	v1 "github.com/Yesveer/wxt-agent/proto/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -1245,7 +1245,7 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\fAgentService\x12K\n" +
 	"\bRegister\x12\x1e.vsay.agent.v1.RegisterRequest\x1a\x1f.vsay.agent.v1.RegisterResponse\x12N\n" +
 	"\tHeartbeat\x12\x1f.vsay.agent.v1.HeartbeatRequest\x1a .vsay.agent.v1.HeartbeatResponse\x12G\n" +
-	"\x06Stream\x12\x1b.vsay.agent.v1.AgentMessage\x1a\x1c.vsay.agent.v1.ServerMessage(\x010\x01B3Z1github.com/vsay/vsay-agent/proto/agent/v1;agentv1b\x06proto3"
+	"\x06Stream\x12\x1b.vsay.agent.v1.AgentMessage\x1a\x1c.vsay.agent.v1.ServerMessage(\x010\x01B5Z3github.com/Yesveer/wxt-agent/proto/agent/v1;agentv1b\x06proto3"
 
 var (
 	file_agent_v1_agent_proto_rawDescOnce sync.Once

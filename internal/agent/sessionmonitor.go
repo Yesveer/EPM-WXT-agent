@@ -50,6 +50,32 @@ func (a *Agent) startSessionMonitor(ctx context.Context) {
 		}
 	}
 
+	// reportSnapshot sends the complete current session list in one message.
+	//
+	// This is what the FIRST scan after an agent start sends, and it exists
+	// because the `known` map lives only in memory. After a restart every
+	// pre-existing session looked new, so the backend recorded a fresh login
+	// for each one — three agent restarts produced three identical entries.
+	// A snapshot lets the backend reconcile instead of blindly inserting, and
+	// also lets it close sessions that ended while the agent was down, which
+	// nothing else would ever have closed.
+	reportSnapshot := func(sessions []extSession) {
+		list := make([]map[string]interface{}, 0, len(sessions))
+		for _, s := range sessions {
+			list = append(list, map[string]interface{}{
+				"protocol":  s.Protocol,
+				"os_user":   s.OSUser,
+				"source_ip": s.SourceIP,
+				"line":      s.Line,
+				"timestamp": s.LoginTime.UTC().Format(time.RFC3339),
+			})
+		}
+		msg, _ := json.Marshal(map[string]interface{}{"sessions": list})
+		if err := a.grpcClient.SendStatusUpdate("__access_snapshot__", string(msg)); err != nil {
+			a.logger.Debug("session monitor: snapshot failed", zap.Error(err))
+		}
+	}
+
 	scan := func(seed bool) {
 		sessions, err := listExternalSessions()
 		if err != nil {
@@ -60,6 +86,14 @@ func (a *Agent) startSessionMonitor(ctx context.Context) {
 		for _, s := range sessions {
 			current[s.key()] = s
 		}
+
+		if seed {
+			a.logger.Info("Reporting existing login sessions", zap.Int("count", len(sessions)))
+			reportSnapshot(sessions)
+			known = current
+			return
+		}
+
 		for k, s := range current {
 			if _, ok := known[k]; !ok {
 				a.logger.Info("External login detected",

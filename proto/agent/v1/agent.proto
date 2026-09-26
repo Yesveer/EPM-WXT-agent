@@ -4,7 +4,7 @@ package vsay.agent.v1;
 
 import "common/v1/types.proto";
 
-option go_package = "github.com/vsay/vsay-agent/proto/agent/v1;agentv1";
+option go_package = "github.com/Yesveer/wxt-agent/proto/agent/v1;agentv1";
 
 // Agent Service - gRPC service for agent communication
 service AgentService {

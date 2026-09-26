@@ -1,4 +1,4 @@
-module github.com/vsay/vsay-agent
+module github.com/Yesveer/wxt-agent
 
 go 1.25.0
 

@@ -126,10 +126,10 @@ jobs:
           mkdir -p dist/bin/windows-amd64 dist/bin/windows-arm64
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
             -ldflags "-s -w -X main.version=${{ steps.version.outputs.VERSION }}" \
-            -o dist/bin/windows-amd64/vsay-agent.exe ./cmd/agent
+            -o dist/bin/windows-amd64/wxt-agent.exe ./cmd/agent
           CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build \
             -ldflags "-s -w -X main.version=${{ steps.version.outputs.VERSION }}" \
-            -o dist/bin/windows-arm64/vsay-agent.exe ./cmd/agent
+            -o dist/bin/windows-arm64/wxt-agent.exe ./cmd/agent
 
       - name: Install NSIS
         shell: powershell
@@ -154,8 +154,8 @@ jobs:
           # Move NSIS installers if they exist
           find scripts/nsis -name "*.exe" -exec mv {} dist/windows/ \; 2>/dev/null || true
           # Copy standalone executables
-          cp dist/bin/windows-amd64/vsay-agent.exe "dist/windows/vsay-agent_${{ steps.version.outputs.VERSION }}_windows_amd64.exe"
-          cp dist/bin/windows-arm64/vsay-agent.exe "dist/windows/vsay-agent_${{ steps.version.outputs.VERSION }}_windows_arm64.exe"
+          cp dist/bin/windows-amd64/wxt-agent.exe "dist/windows/wxt-agent_${{ steps.version.outputs.VERSION }}_windows_amd64.exe"
+          cp dist/bin/windows-arm64/wxt-agent.exe "dist/windows/wxt-agent_${{ steps.version.outputs.VERSION }}_windows_arm64.exe"
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -262,12 +262,12 @@ jobs:
 
             **Debian/Ubuntu:**
             ```bash
-            sudo dpkg -i vsay-agent_${{ steps.version.outputs.VERSION }}_amd64.deb
+            sudo dpkg -i wxt-agent_${{ steps.version.outputs.VERSION }}_amd64.deb
             ```
 
             **RHEL/Fedora/CentOS:**
             ```bash
-            sudo rpm -i vsay-agent-${{ steps.version.outputs.VERSION }}.x86_64.rpm
+            sudo rpm -i wxt-agent-${{ steps.version.outputs.VERSION }}.x86_64.rpm
             ```
 
             **Windows:**
@@ -280,7 +280,7 @@ jobs:
 
             After installation, configure the agent:
             ```bash
-            sudo vsay-agent configure \
+            sudo wxt-agent configure \
               --token <token> \
               --tenant <tenant> \
               --org <org> \
@@ -293,7 +293,7 @@ jobs:
 
             Then start the service:
             ```bash
-            sudo systemctl start vsay-agent
+            sudo systemctl start wxt-agent
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

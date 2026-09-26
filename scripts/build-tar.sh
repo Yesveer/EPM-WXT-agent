@@ -10,7 +10,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # Configuration
-PACKAGE_NAME="vsay-agent"
+PACKAGE_NAME="wxt-agent"
 VERSION=${VERSION:-$(git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo "1.0.0")}
 
 # Fix version if it doesn't start with a digit
@@ -48,9 +48,17 @@ create_tarball() {
     cp "$BIN_SOURCE" "$TAR_DIR/"
     chmod +x "$TAR_DIR/$BIN_NAME"
 
+    # The session helper ships alongside on macOS, where remote control is
+    # supported. Linux is terminal-only, so there is nothing to include.
+    local HELPER_SOURCE="$DIST_DIR/bin/${OS}-${ARCH}/wxt-agent-session"
+    if [ "$OS" = "darwin" ] && [ -f "$HELPER_SOURCE" ]; then
+        cp "$HELPER_SOURCE" "$TAR_DIR/"
+        chmod +x "$TAR_DIR/wxt-agent-session"
+    fi
+
     # Copy systemd service (Linux only)
     if [ "$OS" = "linux" ]; then
-        cp systemd/vsay-agent.service "$TAR_DIR/"
+        cp systemd/wxt-agent.service "$TAR_DIR/"
     fi
 
     # Copy README if exists
@@ -62,11 +70,11 @@ create_tarball() {
 #!/bin/bash
 set -e
 
-echo "Installing vsay-agent..."
+echo "Installing wxt-agent..."
 
 # Install binary
-sudo cp vsay-agent /usr/local/bin/
-sudo chmod +x /usr/local/bin/vsay-agent
+sudo cp wxt-agent /usr/local/bin/
+sudo chmod +x /usr/local/bin/wxt-agent
 
 # Create directories
 sudo mkdir -p /etc/vsay
@@ -75,29 +83,41 @@ sudo chmod 755 /etc/vsay
 sudo chmod 755 /var/log/vsay
 
 # Install systemd service
-sudo cp vsay-agent.service /etc/systemd/system/
+sudo cp wxt-agent.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
 echo "✓ Installation complete!"
 echo ""
 echo "Next steps:"
-echo "1. Configure: sudo vsay-agent configure --token <token> --tenant <tenant> --org <org> --project <project> --user <email> --linux-user <username> --host <host> --allow-sudo"
-echo "2. Start: sudo systemctl start vsay-agent"
+echo "1. Configure: sudo wxt-agent configure --token <token> --tenant <tenant> --org <org> --project <project> --user <email> --linux-user <username> --host <host> --allow-sudo"
+echo "2. Start: sudo systemctl start wxt-agent"
 EOF
     elif [ "$OS" = "darwin" ]; then
         cat > "$TAR_DIR/install.sh" << 'EOF'
 #!/bin/bash
 set -e
 
-echo "Installing vsay-agent..."
+echo "Installing wxt-agent..."
 
 # Install binary
-sudo cp vsay-agent /usr/local/bin/
-sudo chmod +x /usr/local/bin/vsay-agent
+sudo cp wxt-agent /usr/local/bin/
+sudo chmod +x /usr/local/bin/wxt-agent
+
+# The agent looks for the session helper NEXT TO ITSELF, so both binaries have
+# to land in the same directory. Without it remote control cannot start.
+if [ -f wxt-agent-session ]; then
+    sudo cp wxt-agent-session /usr/local/bin/
+    sudo chmod +x /usr/local/bin/wxt-agent-session
+    echo "✓ Session helper installed (needed for remote control)"
+fi
 
 echo "✓ Installation complete!"
 echo ""
-echo "To configure: vsay-agent configure --help"
+echo "To configure: wxt-agent configure --help"
+echo ""
+echo "For remote control, grant wxt-agent-session both Screen Recording and"
+echo "Accessibility under System Settings > Privacy & Security. macOS will not"
+echo "grant these silently."
 EOF
     fi
 
@@ -119,12 +139,12 @@ EOF
 echo "Creating tarballs..."
 
 # Linux
-create_tarball "linux" "amd64" "vsay-agent"
-create_tarball "linux" "arm64" "vsay-agent"
+create_tarball "linux" "amd64" "wxt-agent"
+create_tarball "linux" "arm64" "wxt-agent"
 
 # macOS
-create_tarball "darwin" "amd64" "vsay-agent"
-create_tarball "darwin" "arm64" "vsay-agent"
+create_tarball "darwin" "amd64" "wxt-agent"
+create_tarball "darwin" "arm64" "wxt-agent"
 
 echo ""
 echo -e "${GREEN}✓ TAR.GZ packages built:${NC}"

@@ -24,12 +24,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Yesveer/wxt-agent/internal/agent"
+	"github.com/Yesveer/wxt-agent/internal/config"
+	"github.com/Yesveer/wxt-agent/internal/remotecontrol/helperbin"
 	"github.com/spf13/cobra"
-	"github.com/vsay/vsay-agent/internal/agent"
-	"github.com/vsay/vsay-agent/internal/config"
-	"gopkg.in/yaml.v3"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -40,7 +41,7 @@ var (
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:   "vsay-agent",
+		Use:   "wxt-agent",
 		Short: "Vsay Agent - Remote terminal access for Linux machines",
 		Long:  `Lightweight agent that enables secure remote terminal access to Linux machines`,
 	}
@@ -50,7 +51,15 @@ func main() {
 		Use:   "version",
 		Short: "Print version information",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("vsay-agent %s (commit: %s, built: %s)\n", version, commit, date)
+			fmt.Printf("wxt-agent %s (commit: %s, built: %s)\n", version, commit, date)
+			// Whether the session helper is bundled decides whether remote
+			// control works at all, and it is otherwise invisible — a build
+			// missing it looks identical until someone tries to connect.
+			if helperbin.Available() {
+				fmt.Printf("session helper: bundled (%.1f MB)\n", float64(helperbin.Size())/(1<<20))
+			} else {
+				fmt.Println("session helper: NOT bundled — remote control needs one next to this binary")
+			}
 		},
 	})
 
@@ -70,8 +79,10 @@ func main() {
 	configureCmd.Flags().String("api-host", "", "gRPC server address (IP:PORT, e.g., 192.168.1.6:8081)")
 	configureCmd.Flags().String("name", "", "Machine name (display name for this machine)")
 	configureCmd.Flags().Bool("allow-sudo", false, "Allow sudo command execution (requires user in sudo group)")
-	configureCmd.Flags().String("windows-user", "", "Windows username to create/use for RDP (Windows only)")
-	configureCmd.Flags().String("windows-password", "", "Password for the Windows RDP user (Windows only)")
+	// EPM: RDP account provisioning removed — remote control joins the user's
+	// existing session, so there is no separate RDP account to create.
+	// configureCmd.Flags().String("windows-user", "", "Windows username to create/use for RDP (Windows only)")
+	// configureCmd.Flags().String("windows-password", "", "Password for the Windows RDP user (Windows only)")
 	configureCmd.Flags().Bool("interactive", false, "Interactive configuration")
 	configureCmd.Flags().String("tunnel-url", "", "vsay-tunnel server URL (e.g. http://192.168.1.20:8083); enables tunneling when set")
 	configureCmd.Flags().StringArray("host-entry", []string{}, "Custom /etc/hosts entry in IP:DOMAIN format (e.g. 192.168.1.5:db.internal); may be repeated up to 5 times")
@@ -142,17 +153,21 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Windows uses a completely separate configure flow (RDP user, Windows paths,
-	// scheduled-task service). It lives in configure_windows.go and does NOT touch any
-	// of the Linux logic below. On non-Windows this branch is never taken.
+	// Each OS has its own configure flow, and they share nothing but the flags.
+	// Windows uses scheduled-task service registration and Windows paths; macOS
+	// uses launchd and creates no accounts at all. Neither can run the Linux
+	// logic below, which provisions a login user with useradd — a command that
+	// does not exist on macOS.
+	params := configureParams{
+		Token: token, Tenant: tenant, Org: org, Project: project,
+		User: user, Host: host, APIHost: normalizeGRPCAddr(apiHost), MachineName: machineName,
+		TunnelURL: tunnelURL,
+	}
 	if runtime.GOOS == "windows" {
-		winUser, _ := cmd.Flags().GetString("windows-user")
-		winPass, _ := cmd.Flags().GetString("windows-password")
-		return runConfigureWindows(configureParams{
-			Token: token, Tenant: tenant, Org: org, Project: project,
-			User: user, Host: host, APIHost: apiHost, MachineName: machineName,
-			WindowsUser: winUser, WindowsPassword: winPass, TunnelURL: tunnelURL,
-		})
+		return runConfigureWindows(params)
+	}
+	if runtime.GOOS == "darwin" {
+		return runConfigureDarwin(params)
 	}
 
 	// Validate required flags
@@ -169,6 +184,7 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 
 	// Determine gRPC URL
 	var grpcURL string
+	apiHost = normalizeGRPCAddr(apiHost)
 	if apiHost != "" {
 		// Use provided api-host directly as gRPC address
 		grpcURL = apiHost
@@ -290,8 +306,8 @@ func runConfigure(cmd *cobra.Command, args []string) error {
 	fmt.Println("✓ Agent daemon started and enabled")
 	fmt.Println("✓ Agent will auto-start on system boot")
 	fmt.Println("")
-	fmt.Println("Check status: sudo systemctl status vsay-agent")
-	fmt.Println("View logs: sudo journalctl -u vsay-agent -f")
+	fmt.Println("Check status: sudo systemctl status wxt-agent")
+	fmt.Println("View logs: sudo journalctl -u wxt-agent -f")
 
 	return nil
 }
@@ -476,8 +492,8 @@ func fetchSignedClientCert(host, token string) error {
 // Re-running configure will replace the existing block cleanly.
 func appendHostEntries(entries []config.HostEntry) error {
 	const hostsFile = "/etc/hosts"
-	const blockStart = "# vsay-agent managed hosts — do not edit manually"
-	const blockEnd = "# end vsay-agent managed hosts"
+	const blockStart = "# wxt-agent managed hosts — do not edit manually"
+	const blockEnd = "# end wxt-agent managed hosts"
 
 	// Read current /etc/hosts
 	existing, err := os.ReadFile(hostsFile)
@@ -527,6 +543,29 @@ func extractGRPCURL(host string) string {
 	}
 	// Default
 	return "localhost:8081"
+}
+
+// normalizeGRPCAddr turns whatever was passed to --api-host into a bare
+// host:port that net.Dial accepts.
+//
+// The portal hands out an address that often carries a scheme, because the
+// same value is used for browser URLs elsewhere. gRPC dials raw TCP, so
+// "http://192.168.1.8:8081" fails with "too many colons in address" — a
+// confusing error that looks like a TLS problem in the logs. Strip the scheme
+// (and any trailing path) rather than making every caller remember to.
+func normalizeGRPCAddr(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return ""
+	}
+	for _, scheme := range []string{"https://", "http://", "grpcs://", "grpc://", "tcp://"} {
+		addr = strings.TrimPrefix(addr, scheme)
+	}
+	// Drop anything after the authority, e.g. "host:8081/path".
+	if i := strings.IndexAny(addr, "/?#"); i != -1 {
+		addr = addr[:i]
+	}
+	return strings.TrimSuffix(addr, ":")
 }
 
 // ensureLinuxUser creates the Linux user if it doesn't exist, sets up home directory,
@@ -642,10 +681,10 @@ func ensureLinuxUser(username string, allowSudo bool) (string, error) {
 
 // setupSystemdService ensures systemd service is installed (always overwrites to apply updates)
 func setupSystemdService() error {
-	serviceFile := "/etc/systemd/system/vsay-agent.service"
+	serviceFile := "/etc/systemd/system/wxt-agent.service"
 
 	// Stop existing service if running (ignore errors if not running)
-	if err := exec.Command("systemctl", "stop", "vsay-agent").Run(); err != nil { // #nosec G204
+	if err := exec.Command("systemctl", "stop", "wxt-agent").Run(); err != nil { // #nosec G204
 		fmt.Printf("(service was not running: %v)\n", err)
 	}
 
@@ -658,7 +697,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/local/bin/vsay-agent start --config /etc/vsay/agent.yaml
+ExecStart=/usr/local/bin/wxt-agent start --config /etc/vsay/agent.yaml
 Restart=on-failure
 RestartSec=10s
 StandardOutput=journal
@@ -687,13 +726,13 @@ WantedBy=multi-user.target
 // startAndEnableService starts and enables the systemd service
 func startAndEnableService() error {
 	// Enable service
-	cmd := exec.Command("systemctl", "enable", "vsay-agent")
+	cmd := exec.Command("systemctl", "enable", "wxt-agent")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to enable service: %w", err)
 	}
 
 	// Start service
-	cmd = exec.Command("systemctl", "start", "vsay-agent")
+	cmd = exec.Command("systemctl", "start", "wxt-agent")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
@@ -707,7 +746,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	// Guaranteed early marker to the default log file — proves THIS binary ran (with a
 	// fresh timestamp) even before config load. If this line never appears in the log,
 	// an old binary is running.
-	writeBootLog(fmt.Sprintf("=== vsay-agent %s starting (config=%s) ===", version, configPath))
+	writeBootLog(fmt.Sprintf("=== wxt-agent %s starting (config=%s) ===", version, configPath))
 
 	// Load configuration — handles both encrypted (new) and plaintext (old) formats.
 	cfg, err := config.LoadEncrypted(configPath)
@@ -778,7 +817,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	))
 	defer logger.Sync()
 
-	logger.Info("Starting vsay-agent",
+	logger.Info("Starting wxt-agent",
 		zap.String("version", version),
 		zap.String("agent_id", cfg.Agent.ID),
 		zap.String("linux_user", cfg.LinuxUser.Username),

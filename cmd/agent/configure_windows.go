@@ -23,8 +23,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vsay/vsay-agent/internal/agent"
-	"github.com/vsay/vsay-agent/internal/config"
+	"github.com/Yesveer/wxt-agent/internal/agent"
+	"github.com/Yesveer/wxt-agent/internal/config"
+	"github.com/Yesveer/wxt-agent/internal/remotecontrol"
+	"github.com/Yesveer/wxt-agent/internal/remotecontrol/helperbin"
 )
 
 // Windows install layout — mirrors the Unix /etc/vsay layout under ProgramData.
@@ -33,7 +35,9 @@ const (
 	winCertDir    = `C:\ProgramData\vsay\certs`
 	winLogDir     = `C:\ProgramData\vsay\logs`
 	winConfigFile = `C:\ProgramData\vsay\agent.yaml`
-	winTaskName   = "VsayAgent"
+	// Shared with the self-update restart path — see
+	// internal/agent/serviceids.go.
+	winTaskName = agent.WindowsTaskName
 )
 
 // runConfigureWindows is the Windows equivalent of the Linux configure flow. It sets
@@ -60,31 +64,50 @@ func runConfigureWindows(p configureParams) error {
 		winUser = "vsay"
 	}
 
-	// Remote-desktop backend per edition (the industry-standard split):
-	//   Home  → VNC  (Home cannot host RDP at all)
-	//   Pro/Enterprise/Education/Server → RDP (native, now reliable — the relay
-	//                                    drop-and-teardown bug that made it look broken
-	//                                    is fixed on the backend).
-	if edition == "home" {
-		if p.WindowsPassword == "" {
-			return fmt.Errorf("--windows-password is required on Windows Home (used as the VNC password)")
+	// EPM: RDP and VNC provisioning removed.
+	//
+	// Remote control joins the session the user is ALREADY logged into, which
+	// is the whole point — the user watches along and nobody gets kicked out.
+	// That needs no account, no password and no listener: the session helper
+	// captures the existing desktop from inside it. Creating an RDP account
+	// here would hand out a second, unsupervised way into the machine, which
+	// is precisely what this product exists to avoid.
+	//
+	// The original block is preserved below; re-enable it only if RDP is
+	// reinstated as a separate feature.
+	/*
+		if edition == "home" {
+			if p.WindowsPassword == "" {
+				return fmt.Errorf("--windows-password is required on Windows Home (used as the VNC password)")
+			}
+			fmt.Println("• Setting up VNC server (Windows Home)")
+			if err := installVNCServer(p.WindowsPassword); err != nil {
+				return fmt.Errorf("VNC setup failed: %w", err)
+			}
+			fmt.Println("✓ VNC server installed and running on port 5900")
+		} else {
+			fmt.Printf("• Enabling Remote Desktop (RDP) for user %q\n", winUser)
+			enableWindowsRDPConfigure()
+			if err := ensureWindowsUser(winUser, p.WindowsPassword); err != nil {
+				fmt.Printf("Warning: could not fully configure RDP user: %v\n", err)
+			}
+			fmt.Println("✓ Remote Desktop enabled on port 3389")
 		}
-		fmt.Println("• Setting up VNC server (Windows Home)")
-		if err := installVNCServer(p.WindowsPassword); err != nil {
-			return fmt.Errorf("VNC setup failed: %w", err)
+	*/
+
+	// Warn early rather than at connect time, when an admin and a waiting user
+	// would both be staring at a failure. The helper is looked for next to the
+	// binary being run — where the download put it — since the install copy
+	// has not happened yet at this point.
+	if helperbin.Available() {
+		fmt.Println("✓ Session helper is bundled in this agent — nothing else to download")
+	} else if srcExe, err := os.Executable(); err == nil {
+		if found, err := remotecontrol.FindHelper(filepath.Dir(srcExe)); err != nil {
+			fmt.Println("Warning: this agent build has no bundled session helper and none")
+			fmt.Println("  was found next to it. Remote control will not work.")
+		} else {
+			fmt.Printf("✓ Session helper found: %s\n", filepath.Base(found))
 		}
-		fmt.Println("✓ VNC server installed and running on port 5900")
-	} else {
-		fmt.Printf("• Enabling Remote Desktop (RDP) for user %q\n", winUser)
-		enableWindowsRDPConfigure()
-		// --windows-password is OPTIONAL for RDP: if given, we set it on the account so
-		// there are known credentials; if omitted, the operator logs in with their
-		// existing Windows password at connect time. Either way the account is added to
-		// the Remote Desktop Users group.
-		if err := ensureWindowsUser(winUser, p.WindowsPassword); err != nil {
-			fmt.Printf("Warning: could not fully configure RDP user: %v\n", err)
-		}
-		fmt.Println("✓ Remote Desktop enabled on port 3389")
 	}
 
 	// 3. Create install directories.
@@ -336,6 +359,7 @@ func detectWindowsUser() string {
 //     account, so RDP works with known credentials.
 //   - If no password: assume the account already exists (the operator will enter
 //     their own Windows password at connect time) and only add it to the RDP group.
+//
 // In all cases the user is added to "Remote Desktop Users".
 func ensureWindowsUser(username, password string) error {
 	if password != "" {
@@ -385,7 +409,7 @@ func enableWindowsRDPConfigure() {
 // winInstalledExe is the stable location the agent binary is copied to. Running the
 // scheduled task from here (instead of the user's Downloads folder) avoids failures
 // when SYSTEM tries to launch an exe out of a per-user profile directory.
-const winInstalledExe = `C:\ProgramData\vsay\vsay-agent.exe`
+const winInstalledExe = `C:\ProgramData\vsay\wxt-agent.exe`
 
 // setupWindowsService copies the agent binary to a stable system location, then
 // registers it as a startup scheduled task (runs as SYSTEM at boot) and starts it now.
@@ -401,6 +425,24 @@ func setupWindowsService() error {
 		return fmt.Errorf("install binary to %s: %w", winInstalledExe, err)
 	}
 	fmt.Println("✓ Agent binary installed to", winInstalledExe)
+
+	// The session helper has to travel with the agent: the agent locates it by
+	// looking in its own directory, so leaving it behind in Downloads would
+	// silently disable remote control. It is installed under the canonical
+	// name whatever the download was called.
+	dstHelper := filepath.Join(winConfigDir, remotecontrol.CanonicalHelperName())
+	if srcHelper, err := remotecontrol.FindHelper(filepath.Dir(srcExe)); err == nil && srcHelper != dstHelper {
+		// A copy beside the binary wins, so a developer can test one they just built.
+		if err := copyExecutable(srcHelper, dstHelper); err != nil {
+			fmt.Printf("Warning: could not install the session helper: %v\n", err)
+		} else {
+			fmt.Println("✓ Session helper installed to", dstHelper)
+		}
+	} else if _, err := remotecontrol.EnsureHelper(winConfigDir); err != nil {
+		fmt.Printf("Warning: could not install the session helper: %v\n", err)
+	} else {
+		fmt.Println("✓ Session helper installed to", dstHelper)
+	}
 
 	tr := fmt.Sprintf(`"%s" start --config "%s"`, winInstalledExe, winConfigFile)
 	if out, err := exec.Command("schtasks", "/create",

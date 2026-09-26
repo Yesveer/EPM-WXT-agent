@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && !darwin
 
 package config
 
@@ -15,7 +15,7 @@ func readMachineID() (string, error) {
 	raw, err := os.ReadFile("/etc/machine-id")
 	if err != nil {
 		return "", fmt.Errorf("/etc/machine-id not found (%w). "+
-			"Ensure the host has a unique /etc/machine-id before running vsay-agent", err)
+			"Ensure the host has a unique /etc/machine-id before running wxt-agent", err)
 	}
 	machineID := strings.TrimSpace(string(raw))
 	if len(machineID) < 16 {

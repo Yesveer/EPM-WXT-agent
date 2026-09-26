@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	commonv1 "github.com/vsay/vsay-agent/proto/common/v1"
+	commonv1 "github.com/Yesveer/wxt-agent/proto/common/v1"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/host"

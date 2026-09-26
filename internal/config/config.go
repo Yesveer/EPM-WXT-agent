@@ -47,7 +47,7 @@ type AgentConfig struct {
 type ServerConfig struct {
 	Host       string `yaml:"host"`
 	GRPCURL    string `yaml:"grpc_url"`
-	APIHost    string `yaml:"api_host"`     // Custom gRPC address (optional)
+	APIHost    string `yaml:"api_host"` // Custom gRPC address (optional)
 	TLS        bool   `yaml:"tls"`
 	TokenHash  string `yaml:"token_hash"`
 	Token      string `yaml:"token"`        // Actual token (encrypted in file)

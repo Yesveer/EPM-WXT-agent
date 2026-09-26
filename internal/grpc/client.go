@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	agentv1 "github.com/vsay/vsay-agent/proto/agent/v1"
-	commonv1 "github.com/vsay/vsay-agent/proto/common/v1"
+	agentv1 "github.com/Yesveer/wxt-agent/proto/agent/v1"
+	commonv1 "github.com/Yesveer/wxt-agent/proto/common/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"

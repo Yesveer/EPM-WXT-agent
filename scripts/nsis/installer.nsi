@@ -11,7 +11,7 @@
 !define PRODUCT_NAME "VSay Agent"
 !define PRODUCT_PUBLISHER "VSay"
 !define PRODUCT_WEB_SITE "https://vsay.in"
-!define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\vsay-agent.exe"
+!define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\wxt-agent.exe"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 !define PRODUCT_UNINST_ROOT_KEY "HKLM"
 
@@ -25,7 +25,7 @@
 !endif
 
 Name "${PRODUCT_NAME} ${VERSION}"
-OutFile "vsay-agent-${VERSION}-windows-${ARCH}-setup.exe"
+OutFile "wxt-agent-${VERSION}-windows-${ARCH}-setup.exe"
 InstallDir "$PROGRAMFILES64\VSay\Agent"
 InstallDirRegKey HKLM "${PRODUCT_DIR_REGKEY}" ""
 RequestExecutionLevel admin
@@ -51,7 +51,7 @@ ShowUnInstDetails show
 !insertmacro MUI_PAGE_INSTFILES
 
 ; Finish page
-!define MUI_FINISHPAGE_RUN "$INSTDIR\vsay-agent.exe"
+!define MUI_FINISHPAGE_RUN "$INSTDIR\wxt-agent.exe"
 !define MUI_FINISHPAGE_RUN_PARAMETERS "version"
 !define MUI_FINISHPAGE_RUN_TEXT "Show version information"
 !insertmacro MUI_PAGE_FINISH
@@ -75,24 +75,27 @@ Section "Main Application" SecMain
   SetOverwrite on
 
   ; Copy main executable
-  File "..\..\dist\bin\windows-${ARCH}\vsay-agent.exe"
+  File "..\..\dist\bin\windows-${ARCH}\wxt-agent.exe"
+  ; The session helper must land in the SAME directory as the agent: that is
+  ; where the agent looks for it when starting a remote-control session.
+  File "..\..\dist\bin\windows-${ARCH}\wxt-agent-session.exe"
 
   ; Create config directory
   CreateDirectory "$APPDATA\VSay"
 
   ; Create start menu shortcuts
   CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
-  CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\VSay Agent.lnk" "$INSTDIR\vsay-agent.exe"
+  CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\VSay Agent.lnk" "$INSTDIR\wxt-agent.exe"
   CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk" "$INSTDIR\uninstall.exe"
 
   ; Add to PATH
   EnVar::AddValue "PATH" "$INSTDIR"
 
   ; Write registry keys
-  WriteRegStr HKLM "${PRODUCT_DIR_REGKEY}" "" "$INSTDIR\vsay-agent.exe"
+  WriteRegStr HKLM "${PRODUCT_DIR_REGKEY}" "" "$INSTDIR\wxt-agent.exe"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayName" "$(^Name)"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "UninstallString" "$INSTDIR\uninstall.exe"
-  WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$INSTDIR\vsay-agent.exe"
+  WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$INSTDIR\wxt-agent.exe"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "URLInfoAbout" "${PRODUCT_WEB_SITE}"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "Publisher" "${PRODUCT_PUBLISHER}"
@@ -117,7 +120,8 @@ Section "Uninstall"
   EnVar::DeleteValue "PATH" "$INSTDIR"
 
   ; Delete files
-  Delete "$INSTDIR\vsay-agent.exe"
+  Delete "$INSTDIR\wxt-agent.exe"
+  Delete "$INSTDIR\wxt-agent-session.exe"
   Delete "$INSTDIR\uninstall.exe"
 
   ; Delete shortcuts

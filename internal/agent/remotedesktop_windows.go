@@ -5,8 +5,6 @@ package agent
 import (
 	"os/exec"
 	"strings"
-
-	"go.uber.org/zap"
 )
 
 // detectWindowsEdition returns "home" or "pro". Windows Home editions cannot host RDP
@@ -44,10 +42,23 @@ func remoteDesktopMode() string {
 	return "rdp"
 }
 
-// ensureRemoteDesktop makes sure the machine's remote-desktop backend is up on agent
-// start: the RDP listener (Pro) or the VNC service (Home). Best-effort — the heavy
-// setup (enabling RDP / installing VNC) happens at configure time.
+// ensureRemoteDesktop is disabled for EPM.
+//
+// It used to enable the RDP listener (or install a VNC service on Home) on
+// every agent start. EPM does not use either: remote control joins the session
+// the user is already logged into, through the agent's own RFB server on
+// loopback. Leaving this running would open port 3389 on every managed machine
+// for a feature nothing connects to — a standing inbound entry point that
+// exists only because the code used to need it.
+//
+// The original body is preserved below; restore it only if RDP comes back as a
+// separate feature.
 func (a *Agent) ensureRemoteDesktop() {
+	a.logger.Debug("Remote-desktop (RDP/VNC) provisioning is disabled — EPM uses live remote control")
+}
+
+/*
+func (a *Agent) ensureRemoteDesktopOriginal() {
 	mode := remoteDesktopMode()
 	a.logger.Info("Ensuring remote desktop backend is up", zap.String("mode", mode))
 
@@ -59,14 +70,11 @@ func (a *Agent) ensureRemoteDesktop() {
 	}
 
 	if mode == "vnc" {
-		// TightVNC service (installed at configure) — make sure it's running on 5900.
 		run("sc", "config", "tvnserver", "start=", "auto")
 		run("net", "start", "tvnserver")
 		return
 	}
 
-	// RDP (Pro/Enterprise): enable connections + start the listener service (this is
-	// what binds port 3389) + open the firewall.
 	run("reg", "add", `HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server`,
 		"/v", "fDenyTSConnections", "/t", "REG_DWORD", "/d", "0", "/f")
 	run("sc", "config", "TermService", "start=", "auto")
@@ -75,3 +83,4 @@ func (a *Agent) ensureRemoteDesktop() {
 	run("netsh", "advfirewall", "firewall", "add", "rule",
 		"name=VsayRDP", "dir=in", "action=allow", "protocol=TCP", "localport=3389")
 }
+*/

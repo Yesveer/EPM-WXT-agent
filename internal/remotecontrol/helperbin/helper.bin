@@ -1,0 +1,12 @@
+WXT-HELPER-PLACEHOLDER
+This file is a build-time placeholder, not a binary.
+
+//go:embed cannot compile against a file that does not exist, so one has to be
+committed. The Makefile overwrites it with the real session helper for the
+target platform immediately before building the agent, which is what makes the
+agent a single self-contained download.
+
+An agent built without that step embeds THIS text. helperbin.Available()
+detects it by the marker on the first line and reports that nothing usable is
+embedded, so the agent falls back to looking for the helper on disk rather than
+extracting garbage and failing in a way nobody could diagnose.

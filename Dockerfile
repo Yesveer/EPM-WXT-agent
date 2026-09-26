@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o vsay-agent ./cmd/agent
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o wxt-agent ./cmd/agent
 
 # Runtime stage
 FROM alpine:latest
@@ -24,11 +24,11 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 
 # Copy binary from builder
-COPY --from=builder /app/vsay-agent .
+COPY --from=builder /app/wxt-agent .
 
 # Copy systemd service file
-COPY systemd/vsay-agent.service /etc/systemd/system/
+COPY systemd/wxt-agent.service /etc/systemd/system/
 
 # Run
-ENTRYPOINT ["./vsay-agent"]
+ENTRYPOINT ["./wxt-agent"]
 CMD ["start", "--config", "/etc/vsay/agent.yaml"]

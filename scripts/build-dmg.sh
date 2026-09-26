@@ -10,7 +10,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # Configuration
-PACKAGE_NAME="vsay-agent"
+PACKAGE_NAME="wxt-agent"
 VERSION=${VERSION:-$(git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo "1.0.0")}
 
 # Fix version if it doesn't start with a digit
@@ -31,7 +31,11 @@ mkdir -p "$BUILD_DIR"
 # Function to create DMG
 create_dmg() {
     local ARCH=$1
-    local BIN_SOURCE="$DIST_DIR/bin/darwin-${ARCH}/vsay-agent"
+    local BIN_SOURCE="$DIST_DIR/bin/darwin-${ARCH}/wxt-agent"
+    # The session helper is the half of remote control that runs inside the
+    # user's GUI session. Without it the agent still works, but remote control
+    # fails at the moment an admin tries to use it.
+    local HELPER_SOURCE="$DIST_DIR/bin/darwin-${ARCH}/wxt-agent-session"
 
     if [ ! -f "$BIN_SOURCE" ]; then
         echo -e "${YELLOW}  Skipping darwin-$ARCH (binary not found)${NC}"
@@ -45,21 +49,40 @@ create_dmg() {
     rm -rf "$DMG_DIR"
     mkdir -p "$DMG_DIR/Vsay Agent"
 
-    # Copy binary
-    cp "$BIN_SOURCE" "$DMG_DIR/Vsay Agent/vsay-agent"
-    chmod +x "$DMG_DIR/Vsay Agent/vsay-agent"
+    # Copy binaries
+    cp "$BIN_SOURCE" "$DMG_DIR/Vsay Agent/wxt-agent"
+    chmod +x "$DMG_DIR/Vsay Agent/wxt-agent"
+    if [ -f "$HELPER_SOURCE" ]; then
+        cp "$HELPER_SOURCE" "$DMG_DIR/Vsay Agent/wxt-agent-session"
+        chmod +x "$DMG_DIR/Vsay Agent/wxt-agent-session"
+    else
+        echo -e "${YELLOW}  Warning: session helper missing for darwin-$ARCH — remote control will not work${NC}"
+    fi
 
     # Create install script
     cat > "$DMG_DIR/Vsay Agent/Install.command" << 'EOF'
 #!/bin/bash
 cd "$(dirname "$0")"
-echo "Installing vsay-agent..."
-sudo cp vsay-agent /usr/local/bin/
-sudo chmod +x /usr/local/bin/vsay-agent
+echo "Installing wxt-agent..."
+sudo cp wxt-agent /usr/local/bin/
+sudo chmod +x /usr/local/bin/wxt-agent
+
+# The agent looks for the session helper NEXT TO ITSELF, so both have to land
+# in the same directory.
+if [ -f wxt-agent-session ]; then
+    sudo cp wxt-agent-session /usr/local/bin/
+    sudo chmod +x /usr/local/bin/wxt-agent-session
+    echo "✓ Session helper installed (needed for remote control)"
+fi
+
 echo ""
 echo "✓ Installation complete!"
 echo ""
-echo "To configure: vsay-agent configure --help"
+echo "To configure: wxt-agent configure --help"
+echo ""
+echo "For remote control, macOS will ask you to allow wxt-agent-session under"
+echo "System Settings > Privacy & Security > Screen Recording, and again under"
+echo "Accessibility. Both are required."
 echo ""
 read -p "Press Enter to close..."
 EOF
@@ -72,11 +95,21 @@ Vsay Agent ${VERSION}
 Installation:
 1. Double-click "Install.command" to install
    OR
-   Open Terminal and run: sudo cp vsay-agent /usr/local/bin/
+   Open Terminal and run: sudo cp wxt-agent /usr/local/bin/
+
+Contents:
+  wxt-agent           the agent daemon
+  wxt-agent-session   the session helper, required for remote control.
+                      It MUST sit in the same directory as wxt-agent.
 
 Usage:
-  vsay-agent configure --help
-  vsay-agent start --config /etc/vsay/agent.yaml
+  wxt-agent configure --help
+  wxt-agent start --config /etc/vsay/agent.yaml
+
+Remote control permissions (macOS only):
+  Grant wxt-agent-session both Screen Recording and Accessibility under
+  System Settings > Privacy & Security. Remote control cannot work without
+  them, and macOS will not grant them silently.
 
 For more information, visit: https://vsay.io
 EOF

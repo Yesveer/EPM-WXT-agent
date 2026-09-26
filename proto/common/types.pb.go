@@ -224,7 +224,7 @@ const file_proto_common_types_proto_rawDesc = "" +
 	"cpuPercent\x12%\n" +
 	"\x0ememory_percent\x18\x02 \x01(\x02R\rmemoryPercent\x12!\n" +
 	"\fdisk_percent\x18\x03 \x01(\x02R\vdiskPercent\x12%\n" +
-	"\x0euptime_seconds\x18\x04 \x01(\x03R\ruptimeSecondsB5Z3github.com/vsay/vsay-agent/proto/common/v1;commonv1b\x06proto3"
+	"\x0euptime_seconds\x18\x04 \x01(\x03R\ruptimeSecondsB7Z5github.com/Yesveer/wxt-agent/proto/common/v1;commonv1b\x06proto3"
 
 var (
 	file_proto_common_types_proto_rawDescOnce sync.Once

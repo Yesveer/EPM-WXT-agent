@@ -14,7 +14,7 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-PACKAGE_NAME="vsay-agent"
+PACKAGE_NAME="wxt-agent"
 VERSION=${VERSION:-$(git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo "1.0.0")}
 
 # Fix version if it doesn't start with a digit
@@ -35,7 +35,7 @@ esac
 # Directories
 DIST_DIR="$PROJECT_ROOT/dist"
 BUILD_DIR="$DIST_DIR/deb"
-BIN_SOURCE="$DIST_DIR/bin/linux-${ARCH}/vsay-agent"
+BIN_SOURCE="$DIST_DIR/bin/linux-${ARCH}/wxt-agent"
 
 echo -e "${GREEN}Building DEB package${NC}"
 echo "Package: $PACKAGE_NAME"
@@ -80,12 +80,12 @@ depends:
 
 contents:
   - src: ${BIN_SOURCE}
-    dst: /usr/local/bin/vsay-agent
+    dst: /usr/local/bin/wxt-agent
     file_info:
       mode: 0755
 
-  - src: ${PROJECT_ROOT}/systemd/vsay-agent.service
-    dst: /etc/systemd/system/vsay-agent.service
+  - src: ${PROJECT_ROOT}/systemd/wxt-agent.service
+    dst: /etc/systemd/system/wxt-agent.service
     file_info:
       mode: 0644
 
@@ -130,11 +130,11 @@ else
     mkdir -p "$DEB_DIR/DEBIAN"
 
     # Copy binary
-    cp "$BIN_SOURCE" "$DEB_DIR/usr/local/bin/vsay-agent"
-    chmod 755 "$DEB_DIR/usr/local/bin/vsay-agent"
+    cp "$BIN_SOURCE" "$DEB_DIR/usr/local/bin/wxt-agent"
+    chmod 755 "$DEB_DIR/usr/local/bin/wxt-agent"
 
     # Copy systemd service
-    cp "$PROJECT_ROOT/systemd/vsay-agent.service" "$DEB_DIR/etc/systemd/system/"
+    cp "$PROJECT_ROOT/systemd/wxt-agent.service" "$DEB_DIR/etc/systemd/system/"
 
     # Create control file
     cat > "$DEB_DIR/DEBIAN/control" << EOF
